@@ -1,42 +1,45 @@
-# Local MCP Agent Lab
+# Local Chat + Optional MCP
 
-Local web app for testing local MCP servers with an LLM agent.
+Local ChatGPT-like web app for chatting with an OpenAI-backed model and optionally exposing tools from local MCP servers.
 
 This app:
 
-- stores its own MCP config in SQLite
+- is chat-first, with `/` as the main conversation surface
+- keeps MCP optional and settings-driven
+- stores its own MCP configuration in SQLite
+- persists conversations, messages, and tool calls
 - supports local stdio MCP servers first
-- exposes discovered MCP tools plus a built-in `web_search` tool to an agent
-- persists conversations and tool-call traces
+- includes a built-in `web_search` tool
 - does **not** read `~/.codex/config.toml`
 - does **not** read `.codex/config.toml`
 - does **not** depend on Codex MCP configuration
 
-## OpenAI auth limitation
+## Current auth behavior
 
-The requested product shape included browser OAuth login with OpenAI similar to the Codex sign-in flow.
+The UI starts with an OpenAI-branded browser prompt and popup flow for the local app session.
 
-As of May 18, 2026, public OpenAI docs describe API authentication with API keys and do not document a supported third-party local-app identity OAuth flow equivalent to ChatGPT or Codex sign-in.
+As of May 18, 2026, current public OpenAI docs describe bearer-token API authentication, ChatGPT-side OAuth for remote MCP/connectors, and application-managed OAuth for MCP integrations, but they do not document a supported third-party local-app identity OAuth flow equivalent to ChatGPT sign-in for this app.
 
-This app therefore implements the closest supported fallback:
+This app therefore ships the closest supported fallback:
 
-- the login UX still begins at `GET /auth/openai/login`
-- the app creates its own local browser session
-- actual model calls use an encrypted OpenAI API credential stored in the app database
-- the dashboard clearly explains this limitation
+- `GET /auth/openai/login` opens a browser popup prompt
+- `GET /auth/openai/callback` completes the local app session and closes the popup
+- the user then connects an encrypted OpenAI bearer credential in settings
+- chat unlocks after the bearer credential is connected
 
-References:
+Relevant docs:
 
-- https://developers.openai.com/api/reference/overview#authentication
-- https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- https://platform.openai.com/docs/api-reference/authentication?api-mode=responses
+- https://platform.openai.com/docs/guides/developer-mode
+- https://platform.openai.com/docs/guides/tools-remote-mcp
 - https://platform.openai.com/docs/actions/authentication/oauth
 
 ## Stack
 
 - Next.js 16 App Router
 - route handlers for backend endpoints
-- SQLite via Node `node:sqlite`
-- AES-GCM encryption for stored OpenAI credential and MCP env payloads
+- SQLite via `better-sqlite3`
+- AES-GCM encryption for stored bearer credentials and MCP env payloads
 - stdio MCP client implemented with JSON-RPC over spawned child processes
 
 ## Environment
@@ -55,8 +58,8 @@ AGENT_MAX_TOOL_ROUNDS=8
 
 Notes:
 
-- `APP_ENCRYPTION_SECRET` should be set for any non-throwaway environment.
-- `OPENAI_API_KEY` is optional. The primary supported path in the app is saving a per-user encrypted credential from the dashboard after login.
+- Set `APP_ENCRYPTION_SECRET` in any non-throwaway environment.
+- `OPENAI_API_KEY` is only a server-side fallback. The intended UX is connecting a per-user bearer credential in settings after the popup login flow.
 
 ## Run locally
 
@@ -66,16 +69,23 @@ bun dev
 
 Open `http://localhost:3000`.
 
-## Main routes
+If TypeScript complains about stale Next route types after route changes:
 
-Pages:
+```bash
+bunx next typegen
+```
 
-- `/login`
-- `/dashboard`
-- `/agent`
-- `/history`
+## Main pages
 
-Backend endpoints:
+- `/` chat-first app shell
+- `/login` redirects to `/`
+- `/dashboard` redirects to `/`
+- `/agent` redirects to `/`
+- `/history` redirects to `/`
+
+## Main backend endpoints
+
+Auth:
 
 - `GET /auth/openai/login`
 - `GET /auth/openai/callback`
@@ -83,21 +93,26 @@ Backend endpoints:
 - `GET /auth/me`
 - `POST /auth/openai/session`
 - `DELETE /auth/openai/session`
+
+Chat:
+
+- `GET /conversations`
+- `POST /conversations`
+- `GET /conversations/:id`
+- `POST /conversations/:id/messages`
+
+MCP:
+
 - `GET /mcp/configs`
 - `POST /mcp/configs`
 - `PUT /mcp/configs/:id`
 - `DELETE /mcp/configs/:id`
 - `POST /mcp/configs/:id/discover-tools`
 - `POST /mcp/configs/:id/call-tool`
+
+Legacy testing endpoint kept for compatibility:
+
 - `POST /agent/test`
-
-## MCP config notes
-
-- stdio transport is implemented
-- HTTP transport is schema-supported but intentionally not executed yet
-- shell strings are never executed
-- commands run as executable plus args array only
-- working directories must already exist
 
 ## Data model
 
@@ -108,8 +123,17 @@ SQLite tables:
 - `mcp_server_configs`
 - `mcp_tool_snapshots`
 - `agent_conversations`
+- `conversation_messages`
 - `agent_tool_calls`
+
+## MCP notes
+
+- stdio transport is implemented
+- HTTP transport is schema-supported but not executed yet
+- shell strings are never executed
+- executable + args array only
+- working directories must already exist
 
 ## Web search
 
-The built-in `web_search` tool uses a DuckDuckGo-based provider abstraction intended as a low-friction default. It can be swapped later without changing the agent contract.
+The built-in `web_search` tool uses a DuckDuckGo-based provider abstraction as the default low-friction search backend.
