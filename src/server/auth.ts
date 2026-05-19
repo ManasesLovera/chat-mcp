@@ -6,7 +6,12 @@ import {
   AUTH_COOKIE_NAME,
   LOGIN_STATE_COOKIE_NAME,
 } from "@/server/env";
-import { createUser, getOpenAISessionByUserId, getUserById } from "@/server/db";
+import {
+  createUser,
+  getGeminiSessionByUserId,
+  getOpenAISessionByUserId,
+  getUserById,
+} from "@/server/db";
 
 type SessionPayload = {
   userId: string;
@@ -88,6 +93,25 @@ export async function consumeOpenAILoginState(expectedState: string) {
   return actual === expectedState;
 }
 
+export async function beginGeminiLogin() {
+  const state = randomUUID();
+  const cookieStore = await cookies();
+  cookieStore.set(
+    LOGIN_STATE_COOKIE_NAME,
+    state,
+    buildCookieOptions(60 * 10),
+  );
+
+  return state;
+}
+
+export async function consumeGeminiLoginState(expectedState: string) {
+  const cookieStore = await cookies();
+  const actual = cookieStore.get(LOGIN_STATE_COOKIE_NAME)?.value;
+  cookieStore.delete(LOGIN_STATE_COOKIE_NAME);
+  return actual === expectedState;
+}
+
 export async function ensureSessionUser() {
   const existing = await getCurrentUser();
   if (existing) {
@@ -102,14 +126,18 @@ export async function ensureSessionUser() {
 export async function getAuthContext() {
   const user = await getCurrentUser();
   const openaiSession = user ? getOpenAISessionByUserId(user.id) : null;
+  const geminiSession = user ? getGeminiSessionByUserId(user.id) : null;
 
   return {
     user,
     isLoggedInToApp: Boolean(user),
     hasOpenAIConnection: Boolean(openaiSession),
     hasOpenAICredential: Boolean(openaiSession),
-    chatUnlocked: Boolean(user && openaiSession),
+    hasGeminiConnection: Boolean(geminiSession),
+    hasGeminiCredential: Boolean(geminiSession),
+    chatUnlocked: Boolean(user && (openaiSession || geminiSession)),
     openaiConnectionMode: openaiSession ? "api_key_fallback" : "none",
+    geminiConnectionMode: geminiSession ? "api_key_fallback" : "none",
     oauthSupport: "unsupported_for_third_party_local_apps",
   };
 }

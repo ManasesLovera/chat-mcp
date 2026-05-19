@@ -17,6 +17,16 @@ export type OpenAISessionRecord = {
   updatedAt: string;
 };
 
+export type GeminiSessionRecord = {
+  id: string;
+  userId: string;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MCPTransportType = "stdio" | "http";
 
 export type MCPServerConfigRecord = {

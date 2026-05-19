@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { OpenAILoginButton } from "@/components/openai-login-button";
+import { GeminiLoginButton } from "@/components/gemini-login-button";
 
 type AuthContext = {
   user: {
@@ -13,8 +14,11 @@ type AuthContext = {
   isLoggedInToApp: boolean;
   hasOpenAIConnection: boolean;
   hasOpenAICredential: boolean;
+  hasGeminiConnection: boolean;
+  hasGeminiCredential: boolean;
   chatUnlocked: boolean;
   openaiConnectionMode: string;
+  geminiConnectionMode: string;
   oauthSupport: string;
 };
 
@@ -82,7 +86,7 @@ type Props = {
   initialToolsByConfigId: Record<string, ToolSnapshot[]>;
 };
 
-type SettingsTab = "general" | "openai" | "mcp";
+type SettingsTab = "general" | "openai" | "gemini" | "mcp";
 
 type FormState = {
   id: string | null;
@@ -137,6 +141,7 @@ export function ChatClient({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [openAIApiKey, setOpenAIApiKey] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [configs, setConfigs] = useState(initialConfigs);
   const [toolsByConfigId, setToolsByConfigId] = useState(initialToolsByConfigId);
   const [enableWebSearch, setEnableWebSearch] = useState(true);
@@ -360,7 +365,7 @@ export function ChatClient({
           ...current,
           hasOpenAIConnection: false,
           hasOpenAICredential: false,
-          chatUnlocked: false,
+          chatUnlocked: current.hasGeminiCredential,
         }));
         setMessage("OpenAI bearer credential removed.");
       } catch (caughtError) {
@@ -368,6 +373,71 @@ export function ChatClient({
           caughtError instanceof Error
             ? caughtError.message
             : "Failed to remove OpenAI credential.",
+        );
+      }
+    });
+  }
+
+  async function saveGeminiCredential() {
+    setMessage(null);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/auth/gemini/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ apiKey: geminiApiKey }),
+        });
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          throw new Error(data.error ?? "Failed to save Gemini credential.");
+        }
+
+        setGeminiApiKey("");
+        setAuthState((current) => ({
+          ...current,
+          hasGeminiConnection: true,
+          hasGeminiCredential: true,
+          chatUnlocked: true,
+        }));
+        setMessage("Gemini API key stored.");
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Failed to save Gemini credential.",
+        );
+      }
+    });
+  }
+
+  async function removeGeminiCredential() {
+    setMessage(null);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/auth/gemini/session", {
+          method: "DELETE",
+        });
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          throw new Error(data.error ?? "Failed to remove Gemini credential.");
+        }
+
+        setAuthState((current) => ({
+          ...current,
+          hasGeminiConnection: false,
+          hasGeminiCredential: false,
+          chatUnlocked: current.hasOpenAICredential,
+        }));
+        setMessage("Gemini API key removed.");
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Failed to remove Gemini credential.",
         );
       }
     });
@@ -562,24 +632,33 @@ export function ChatClient({
                   {authState.chatUnlocked
                     ? "Chat enabled"
                     : authState.isLoggedInToApp
-                      ? "Connect OpenAI bearer token to start chatting"
+                      ? "Connect OpenAI or Gemini to start chatting"
                       : "Sign in to start chatting"}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {!authState.isLoggedInToApp ? (
-                <OpenAILoginButton className="chat-secondary-button rounded-full px-4 py-2 text-sm">
-                  Log in
-                </OpenAILoginButton>
+                <div className="flex gap-2">
+                  <OpenAILoginButton className="chat-secondary-button rounded-full px-4 py-2 text-sm">
+                    OpenAI
+                  </OpenAILoginButton>
+                  <GeminiLoginButton className="chat-secondary-button rounded-full px-4 py-2 text-sm">
+                    Gemini
+                  </GeminiLoginButton>
+                </div>
               ) : (
                 <>
                   <button
                     type="button"
-                    onClick={() => openSettings("openai")}
+                    onClick={() => openSettings(authState.hasGeminiCredential ? "gemini" : "openai")}
                     className="chat-secondary-button rounded-full px-4 py-2 text-sm"
                   >
-                    {authState.chatUnlocked ? "OpenAI connected" : "Connect OpenAI"}
+                    {authState.hasOpenAICredential
+                      ? "OpenAI connected"
+                      : authState.hasGeminiCredential
+                        ? "Gemini connected"
+                        : "Connect AI"}
                   </button>
                   <button
                     type="button"
@@ -659,7 +738,7 @@ export function ChatClient({
 
               {authState.isLoggedInToApp && !authState.chatUnlocked && (
                 <div className="mb-4 rounded-3xl border border-white/8 bg-[#171717] px-5 py-4 text-sm text-[#9f9f9f]">
-                  Chat is locked until you connect an encrypted OpenAI bearer
+                  Chat is locked until you connect an encrypted OpenAI or Gemini
                   credential in settings.
                   <button
                     type="button"
@@ -675,10 +754,18 @@ export function ChatClient({
                 <textarea
                   value={composer}
                   onChange={(event) => setComposer(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      if (authState.chatUnlocked && !pending && composer.trim() !== "") {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
                   placeholder={
                     authState.chatUnlocked
                       ? "Message this local chat app"
-                      : "Connect OpenAI to start chatting"
+                      : "Connect AI to start chatting"
                   }
                   disabled={!authState.chatUnlocked || pending}
                   className="chat-composer"
@@ -727,7 +814,7 @@ export function ChatClient({
 
             <div className="flex min-h-0 flex-1">
               <nav className="settings-nav">
-                {(["general", "openai", "mcp"] as SettingsTab[]).map((tab) => (
+                {(["general", "openai", "gemini", "mcp"] as SettingsTab[]).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -740,7 +827,9 @@ export function ChatClient({
                       ? "General"
                       : tab === "openai"
                         ? "OpenAI"
-                        : "MCP"}
+                        : tab === "gemini"
+                          ? "Gemini"
+                          : "MCP"}
                   </button>
                 ))}
               </nav>
@@ -820,6 +909,57 @@ export function ChatClient({
                           type="button"
                           onClick={removeCredential}
                           disabled={pending || !authState.hasOpenAICredential}
+                          className="chat-secondary-button rounded-full px-5 py-3 text-sm disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                )}
+
+                {settingsTab === "gemini" && (
+                  <div className="space-y-5">
+                    <section className="settings-card">
+                      <h3 className="text-base font-semibold text-white">
+                        Google Gemini API
+                      </h3>
+                      <p className="mt-2 text-sm leading-7 text-[#9f9f9f]">
+                        Google exposes Gemini API via Google AI Studio. While
+                        full OAuth flows exist for Google Cloud, this lab
+                        focuses on local agent testing with encrypted API key
+                        storage.
+                      </p>
+                      {!authState.isLoggedInToApp && (
+                        <div className="mt-4">
+                          <GeminiLoginButton className="chat-primary-button rounded-full px-5 py-3 text-sm font-semibold" />
+                        </div>
+                      )}
+                    </section>
+                    <section className="settings-card">
+                      <h3 className="text-base font-semibold text-white">
+                        Connect API key
+                      </h3>
+                      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+                        <input
+                          type="password"
+                          value={geminiApiKey}
+                          onChange={(event) => setGeminiApiKey(event.target.value)}
+                          placeholder="Paste Gemini API key"
+                          className="settings-input"
+                        />
+                        <button
+                          type="button"
+                          onClick={saveGeminiCredential}
+                          disabled={pending || geminiApiKey.trim() === ""}
+                          className="chat-primary-button rounded-full px-5 py-3 text-sm font-semibold disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={removeGeminiCredential}
+                          disabled={pending || !authState.hasGeminiCredential}
                           className="chat-secondary-button rounded-full px-5 py-3 text-sm disabled:opacity-50"
                         >
                           Remove

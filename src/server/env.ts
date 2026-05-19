@@ -10,6 +10,7 @@ export const APP_ENCRYPTION_SECRET =
 export const AUTH_COOKIE_NAME = "mcp_agent_lab_session";
 export const LOGIN_STATE_COOKIE_NAME = "mcp_agent_lab_login_state";
 export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4.1";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-1.5-pro";
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
 export const MCP_HTTP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_STARTUP_TIMEOUT_MS = Number(

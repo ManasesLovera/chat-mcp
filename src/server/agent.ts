@@ -17,6 +17,8 @@ import {
 } from "@/server/db";
 import { callToolForConfig, discoverToolsForConfig } from "@/server/mcp";
 import { createChatCompletion } from "@/server/openai";
+import { createGeminiChatCompletion } from "@/server/gemini";
+import { getGeminiSessionByUserId, getOpenAISessionByUserId } from "@/server/db";
 import { duckDuckGoProvider } from "@/server/search";
 import type {
   ConversationMessageRecord,
@@ -250,8 +252,16 @@ async function runToolLoop(input: {
   let finalAnswer = "";
   let finalStatus: "completed" | "timed_out" = "completed";
 
+  const openaiSession = getOpenAISessionByUserId(input.userId);
+  const geminiSession = getGeminiSessionByUserId(input.userId);
+
+  const completionFn =
+    geminiSession && !openaiSession
+      ? createGeminiChatCompletion
+      : createChatCompletion;
+
   for (let round = 0; round < AGENT_MAX_TOOL_ROUNDS; round += 1) {
-    const assistant = await createChatCompletion({
+    const assistant = await completionFn({
       userId: input.userId,
       messages,
       tools: input.toolDefinitions,

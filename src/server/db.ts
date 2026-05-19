@@ -144,6 +144,21 @@ const MIGRATIONS: Migration[] = [
         ON agent_conversations (user_id, last_message_at DESC);
     `,
   },
+  {
+    id: "003_gemini_sessions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS gemini_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        access_token_encrypted TEXT NOT NULL,
+        refresh_token_encrypted TEXT,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `,
+  },
 ];
 
 const db = createDatabase();
@@ -224,6 +239,24 @@ function mapUser(row: DbRow | undefined): UserRecord | null {
 }
 
 function mapOpenAISession(row: DbRow | undefined): OpenAISessionRecord | null {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    accessTokenEncrypted: String(row.access_token_encrypted),
+    refreshTokenEncrypted: row.refresh_token_encrypted
+      ? String(row.refresh_token_encrypted)
+      : null,
+    expiresAt: row.expires_at ? String(row.expires_at) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function mapGeminiSession(row: DbRow | undefined): GeminiSessionRecord | null {
   if (!row) {
     return null;
   }
@@ -374,6 +407,46 @@ export function upsertOpenAISession(userId: string, accessToken: string) {
 
 export function deleteOpenAISession(userId: string) {
   db.prepare("DELETE FROM openai_sessions WHERE user_id = ?").run(userId);
+}
+
+export function getGeminiSessionByUserId(userId: string) {
+  const row = db
+    .prepare("SELECT * FROM gemini_sessions WHERE user_id = ?")
+    .get(userId) as DbRow | undefined;
+  return mapGeminiSession(row);
+}
+
+export function upsertGeminiSession(userId: string, accessToken: string) {
+  const existing = getGeminiSessionByUserId(userId);
+  const timestamp = nowIso();
+  const encryptedToken = encryptText(accessToken);
+
+  if (existing) {
+    db.prepare(
+      `
+        UPDATE gemini_sessions
+        SET access_token_encrypted = ?, refresh_token_encrypted = NULL, expires_at = NULL, updated_at = ?
+        WHERE user_id = ?
+      `,
+    ).run(encryptedToken, timestamp, userId);
+
+    return getGeminiSessionByUserId(userId)!;
+  }
+
+  const id = randomUUID();
+  db.prepare(
+    `
+      INSERT INTO gemini_sessions (
+        id, user_id, access_token_encrypted, refresh_token_encrypted, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, NULL, NULL, ?, ?)
+    `,
+  ).run(id, userId, encryptedToken, timestamp, timestamp);
+
+  return getGeminiSessionByUserId(userId)!;
+}
+
+export function deleteGeminiSession(userId: string) {
+  db.prepare("DELETE FROM gemini_sessions WHERE user_id = ?").run(userId);
 }
 
 export function listMcpServerConfigsByUserId(userId: string) {

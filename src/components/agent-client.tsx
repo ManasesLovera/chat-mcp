@@ -33,10 +33,10 @@ type AgentResult = {
 
 export function AgentClient({
   configs,
-  hasOpenAIConnection,
+  hasAIConnection,
 }: {
   configs: Config[];
-  hasOpenAIConnection: boolean;
+  hasAIConnection: boolean;
 }) {
   const [prompt, setPrompt] = useState(
     "Use the available tools to inspect the configured MCP servers and explain what they can do.",
@@ -101,10 +101,10 @@ export function AgentClient({
           tool. Every tool call is persisted.
         </p>
 
-        {!hasOpenAIConnection && (
+        {!hasAIConnection && (
           <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Connect an OpenAI credential on the dashboard before running the
-            agent.
+            Connect an OpenAI or Gemini credential on the dashboard before
+            running the agent.
           </div>
         )}
 
@@ -155,7 +155,7 @@ export function AgentClient({
         <button
           type="button"
           onClick={runTest}
-          disabled={pending || !hasOpenAIConnection || prompt.trim() === ""}
+          disabled={pending || !hasAIConnection || prompt.trim() === ""}
           className="btn-primary mt-5 w-full rounded-full px-5 py-3 font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "Running agent..." : "Run test"}
