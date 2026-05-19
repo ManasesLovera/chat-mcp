@@ -11,6 +11,7 @@ export const AUTH_COOKIE_NAME = "mcp_agent_lab_session";
 export const LOGIN_STATE_COOKIE_NAME = "mcp_agent_lab_login_state";
 export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4.1";
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
+export const MCP_HTTP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_STARTUP_TIMEOUT_MS = Number(
   process.env.MCP_STARTUP_TIMEOUT_MS ?? 8000,
 );
