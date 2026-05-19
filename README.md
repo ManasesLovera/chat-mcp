@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Local MCP Agent Lab
 
-## Getting Started
+Local web app for testing local MCP servers with an LLM agent.
 
-First, run the development server:
+This app:
+
+- stores its own MCP config in SQLite
+- supports local stdio MCP servers first
+- exposes discovered MCP tools plus a built-in `web_search` tool to an agent
+- persists conversations and tool-call traces
+- does **not** read `~/.codex/config.toml`
+- does **not** read `.codex/config.toml`
+- does **not** depend on Codex MCP configuration
+
+## OpenAI auth limitation
+
+The requested product shape included browser OAuth login with OpenAI similar to the Codex sign-in flow.
+
+As of May 18, 2026, public OpenAI docs describe API authentication with API keys and do not document a supported third-party local-app identity OAuth flow equivalent to ChatGPT or Codex sign-in.
+
+This app therefore implements the closest supported fallback:
+
+- the login UX still begins at `GET /auth/openai/login`
+- the app creates its own local browser session
+- actual model calls use an encrypted OpenAI API credential stored in the app database
+- the dashboard clearly explains this limitation
+
+References:
+
+- https://developers.openai.com/api/reference/overview#authentication
+- https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- https://platform.openai.com/docs/actions/authentication/oauth
+
+## Stack
+
+- Next.js 16 App Router
+- route handlers for backend endpoints
+- SQLite via Node `node:sqlite`
+- AES-GCM encryption for stored OpenAI credential and MCP env payloads
+- stdio MCP client implemented with JSON-RPC over spawned child processes
+
+## Environment
+
+Optional environment variables:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+APP_DATABASE_PATH=./data/local-mcp-agent-lab.sqlite
+APP_ENCRYPTION_SECRET=replace-this-for-real-use
+OPENAI_MODEL=gpt-4.1
+OPENAI_API_KEY=optional-global-fallback-key
+MCP_STARTUP_TIMEOUT_MS=8000
+MCP_TOOL_TIMEOUT_MS=20000
+AGENT_MAX_TOOL_ROUNDS=8
+```
+
+Notes:
+
+- `APP_ENCRYPTION_SECRET` should be set for any non-throwaway environment.
+- `OPENAI_API_KEY` is optional. The primary supported path in the app is saving a per-user encrypted credential from the dashboard after login.
+
+## Run locally
+
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Main routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Pages:
 
-## Learn More
+- `/login`
+- `/dashboard`
+- `/agent`
+- `/history`
 
-To learn more about Next.js, take a look at the following resources:
+Backend endpoints:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `GET /auth/openai/login`
+- `GET /auth/openai/callback`
+- `POST /auth/logout`
+- `GET /auth/me`
+- `POST /auth/openai/session`
+- `DELETE /auth/openai/session`
+- `GET /mcp/configs`
+- `POST /mcp/configs`
+- `PUT /mcp/configs/:id`
+- `DELETE /mcp/configs/:id`
+- `POST /mcp/configs/:id/discover-tools`
+- `POST /mcp/configs/:id/call-tool`
+- `POST /agent/test`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## MCP config notes
 
-## Deploy on Vercel
+- stdio transport is implemented
+- HTTP transport is schema-supported but intentionally not executed yet
+- shell strings are never executed
+- commands run as executable plus args array only
+- working directories must already exist
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data model
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+SQLite tables:
+
+- `users`
+- `openai_sessions`
+- `mcp_server_configs`
+- `mcp_tool_snapshots`
+- `agent_conversations`
+- `agent_tool_calls`
+
+## Web search
+
+The built-in `web_search` tool uses a DuckDuckGo-based provider abstraction intended as a low-friction default. It can be swapped later without changing the agent contract.
